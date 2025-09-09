@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-usage(){ echo "Usage: $0 -q QUERY.faa -s SUBJECT.fna -o out.txt [-e 1e-5] [-L 50] [-t 2]"; exit 1; }
+usage(){ echo "Usage: $0 -q QUERY.faa -s SUBJECT.fna -o out.txt [-e 1e-3] [-L 30] [-t 2]"; exit 1; }
 
-E=1e-5
-L=50
+E=1e-3
+L=30
 T=2
 Q="" S="" OUT=""
 
@@ -33,6 +33,6 @@ db="$tmp/db"
 makeblastdb -in "$S" -dbtype nucl -out "$db" >/dev/null
 tblastn -query "$Q" -db "$db" -num_threads "$T" -outfmt '6 length evalue sseqid' > "$tmp/hits.tsv" || true
 
-count=$(awk -v e="$E" -v l="$L" '($2+0)<=e && $1>=l{print $3}' "$tmp/hits.tsv" | sort -u | wc -l | tr -d " ")
-echo "$count" > "$OUT"
+awk -v e="$E" -v l="$L" '($2+0)<=e && $1>=l{print $3}' "$tmp/hits.tsv" | sort -u > "$OUT"
+count=$(wc -l < "$OUT" | tr -d " ")
 echo "$count"
