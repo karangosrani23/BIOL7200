@@ -20,11 +20,7 @@ while getopts ":q:s:o:e:L:t:h" opt; do
   esac
 done
 shift $((OPTIND-1))
-
-if [ -z "$Q" ] && [ $# -ge 3 ]; then
-  Q=$1; S=$2; OUT=$3
-fi
-
+if [ -z "$Q" ] && [ $# -ge 3 ]; then Q=$1; S=$2; OUT=$3; fi
 [ -n "$Q" ] && [ -n "$S" ] && [ -n "$OUT" ] || usage
 [ -f "$Q" ] || { echo "Query not found: $Q" >&2; exit 1; }
 [ -f "$S" ] || { echo "Subject not found: $S" >&2; exit 1; }
@@ -32,10 +28,11 @@ command -v makeblastdb >/dev/null 2>&1 || { echo "makeblastdb not found" >&2; ex
 command -v tblastn     >/dev/null 2>&1 || { echo "tblastn not found"     >&2; exit 1; }
 
 mkdir -p "$(dirname "$OUT")"
-tmp=$(mktemp -d)
-trap 'rm -rf "$tmp"' EXIT
-
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 db="$tmp/db"
 makeblastdb -in "$S" -dbtype nucl -out "$db" >/dev/null
 tblastn -query "$Q" -db "$db" -num_threads "$T" -outfmt '6 length evalue sseqid' > "$tmp/hits.tsv" || true
-awk -v e="$E" -v l="$L" '($2+0)<=e && $1>=l{print $3}' "$tmp/hits.tsv" | sort -u | wc -l | tr -d ' ' > "$OUT"
+
+count=$(awk -v e="$E" -v l="$L" '($2+0)<=e && $1>=l{print $3}' "$tmp/hits.tsv" | sort -u | wc -l | tr -d " ")
+echo "$count" > "$OUT"
+echo "$count"
