@@ -1,19 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
+usage(){ echo "Usage: $0 -q QUERY.faa -s SUBJECT.fna -o out.txt [-e 1e-5] [-L 50] [-t 2]"; exit 1; }
 
-# Init empty find_homologs.sh
-# Init: add script scaffold
+E=1e-5
+L=50
+T=2
+Q="" S="" OUT=""
 
-[ $# -ge 2 ] || { echo "usage: $0 query.faa subject.fna [outdir]"; exit 1; }
-Q=$1; S=$2; O=${3:-homologs_out}; E=${E:-1e-5}; L=${L:-50}
+while getopts ":q:s:o:e:L:t:h" opt; do
+  case $opt in
+    q) Q=$OPTARG ;;
+    s) S=$OPTARG ;;
+    o) OUT=$OPTARG ;;
+    e) E=$OPTARG ;;
+    L) L=$OPTARG ;;
+    t) T=$OPTARG ;;
+    h) usage ;;
+    \?|:) usage ;;
+  esac
+done
+shift $((OPTIND-1))
 
-mkdir -p "$O"; DB="$O/db"
-makeblastdb -in "$S" -dbtype nucl -out "$DB" >/dev/null 2>&1 || true
-tblastn -query "$Q" -db "$DB" -outfmt 6 > "$O/hits.tsv"
+if [ -z "$Q" ] && [ $# -ge 3 ]; then
+  Q=$1; S=$2; OUT=$3
+fi
 
-awk -v e="$E" -v l="$L" '($9+0)<=e && $4>=l' "$O/hits.tsv" > "$O/hits.filtered.tsv" || true
-[ -s "$O/hits.filtered.tsv" ] \
-  && cut -f2 "$O/hits.filtered.tsv" | sort -u | wc -l | tr -d ' ' > "$O/hits.count.txt" \
-  || echo 0 > "$O/hits.count.txt"
+[ -n "$Q" ] && [ -n "$S" ] && [ -n "$OUT" ] || usage
+[ -f "$Q" ] || { echo "Query not found: $Q" >&2; exit 1; }
+[ -f "$S" ] || { echo "Subject not found: $S" >&2; exit 1; }
+command -v makeblastdb >/dev/null 2>&1 || { echo "makeblastdb not found" >&2; exit 1; }
+command -v tblastn     >/dev/null 2>&1 || { echo "tblastn not found"     >&2; exit 1; }
 
-  cat "$O/hits.count.txt" 
+mkdir -p "$(dirname "$OUT")"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+db="$tmp/db"
+makeblastdb -in "$S" -dbtype nucl -out "$db" >/dev/null
+tblastn -query "$Q" -db "$db" -num_threads "$T" -outfmt '6 length evalue sseqid' > "$tmp/hits.tsv" || true
+awk -v e="$E" -v l="$L" '($2+0)<=e && $1>=l{print $3}' "$tmp/hits.tsv" | sort -u | wc -l | tr -d ' ' > "$OUT"
